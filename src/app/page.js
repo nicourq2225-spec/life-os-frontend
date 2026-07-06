@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// ESTA ES LA CLAVE PARA INTERNET: Si estás en Vercel usa la URL de producción, si estás en tu PC usa localhost
+// CONEXIÓN A TU BACKEND EN RENDER (Vía Vercel)
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 const MAPA_CATEGORIAS = {
@@ -59,6 +59,8 @@ export default function Dashboard() {
   
   const [agendaCompleta, setAgendaCompleta] = useState([]);
   const [diaAgendaSeleccionado, setDiaAgendaSeleccionado] = useState(calcularDiaCiclo(obtenerFechaLocal()));
+  
+  // ESTADO MODAL AGENDA (Este es el que faltaba mostrar)
   const [modalAgendaAbierto, setModalAgendaAbierto] = useState(false);
   const [eventoEdit, setEventoEdit] = useState({ id: null, horaInicio: '08:00', horaFin: '09:00', titulo: '', tipo: 'Obligacion' });
 
@@ -157,10 +159,40 @@ export default function Dashboard() {
     }
   };
 
+  // --- LÓGICA DE AGENDA (AQUÍ ESTÁN TUS BOTONES) ---
   const agendaFiltradaVista = agendaCompleta.filter(e => e.diaCiclo === diaAgendaSeleccionado).sort((a,b) => a.horaInicio.localeCompare(b.horaInicio));
-  const abrirModalAgenda = (evento = null) => { if (evento) setEventoEdit({ id: evento.id, horaInicio: evento.horaInicio, horaFin: evento.horaFin, titulo: evento.titulo, tipo: evento.tipo }); else setEventoEdit({ id: null, horaInicio: '08:00', horaFin: '09:00', titulo: '', tipo: 'Obligacion' }); setModalAgendaAbierto(true); };
-  const guardarEventoAgenda = async (e) => { e.preventDefault(); const payload = { ...eventoEdit, diaCiclo: diaAgendaSeleccionado }; try { if (eventoEdit.id) await axios.put(`${API_URL}/api/agenda/${eventoEdit.id}`, payload); else await axios.post(`${API_URL}/api/agenda`, payload); setModalAgendaAbierto(false); cargarDatosGlobales(); } catch (error) {} };
-  const borrarEventoAgenda = async (id) => { if (window.confirm("¿Eliminar bloque?")) { try { await axios.delete(`${API_URL}/api/agenda/${id}`); cargarDatosGlobales(); } catch(e){} } };
+  
+  const abrirModalAgenda = (evento = null) => { 
+    if (evento) {
+      setEventoEdit({ id: evento.id, horaInicio: evento.horaInicio, horaFin: evento.horaFin, titulo: evento.titulo, tipo: evento.tipo }); 
+    } else {
+      setEventoEdit({ id: null, horaInicio: '08:00', horaFin: '09:00', titulo: '', tipo: 'Obligacion' }); 
+    }
+    setModalAgendaAbierto(true); 
+  };
+
+  const guardarEventoAgenda = async (e) => { 
+    e.preventDefault(); 
+    const payload = { ...eventoEdit, diaCiclo: diaAgendaSeleccionado }; 
+    try { 
+      if (eventoEdit.id) {
+        await axios.put(`${API_URL}/api/agenda/${eventoEdit.id}`, payload); 
+      } else {
+        await axios.post(`${API_URL}/api/agenda`, payload); 
+      }
+      setModalAgendaAbierto(false); 
+      cargarDatosGlobales(); 
+    } catch (error) { console.error(error); } 
+  };
+
+  const borrarEventoAgenda = async (id) => { 
+    if (window.confirm("¿Estás seguro de que quieres eliminar este evento?")) { 
+      try { 
+        await axios.delete(`${API_URL}/api/agenda/${id}`); 
+        cargarDatosGlobales(); 
+      } catch(e) { console.error(e); } 
+    } 
+  };
 
   const abrirFormularioNuevo = (tipo = 'Gasto', subTipo = 'Necesario') => { setFormId(null); setFormTipo(tipo); setFormSubTipo(subTipo); setFormMonto(''); setFormCategoria('Alquiler'); setFormAplicacion(''); setFormFecha(obtenerFechaLocal()); setModalAbierto(true); };
   const abrirFormularioEdicion = (t) => { setFormId(t.id); setFormTipo(t.tipo); setFormSubTipo(t.categoria === 'Ingreso' ? 'Necesario' : t.categoria); setFormMonto(t.monto); setFormCategoria(t.categoriaFinanzas || 'Desconocido'); setFormAplicacion(t.aplicacion || ''); setFormFecha(t.fecha.split('T')[0]); setModalAbierto(true); };
@@ -240,11 +272,10 @@ export default function Dashboard() {
   const pcts = procesarHabitosEstadisticas();
 
   return (
-    // IMPORTANTE: pb-24 asegura que el contenido no quede tapado por la barra de navegación móvil
     <div className="min-h-screen p-4 md:p-12 font-sans bg-stone-950 text-stone-200 selection:bg-emerald-900 pb-24 md:pb-12">
       <div className="max-w-6xl mx-auto space-y-8">
         
-        {/* === NAVEGACIÓN DESKTOP (Oculta en Celular) === */}
+        {/* NAVEGACIÓN DESKTOP */}
         <div className="hidden md:flex flex-col xl:flex-row justify-between items-start xl:items-center border-b border-stone-800 pb-4 gap-4">
           <div className="flex gap-6 overflow-x-auto w-full xl:w-auto scrollbar-hide">
             {['dashboard', 'finanzas', 'auditoria', 'habitos', 'agenda'].map((tab) => (
@@ -278,7 +309,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* === NAVEGACIÓN MÓVIL (Barra Inferior Tipo App) === */}
+        {/* NAVEGACIÓN MÓVIL */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 bg-stone-950/95 backdrop-blur-md border-t border-stone-800 flex justify-around items-center p-3 z-40">
           {[
             { id: 'dashboard', icon: '⌂', label: 'Inicio' },
@@ -297,17 +328,12 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* BOTÓN FLOTANTE MÓVIL (Para acciones rápidas) */}
         <div className="md:hidden fixed bottom-20 right-4 flex flex-col gap-3 z-40">
-          <button onClick={() => abrirModalHabitoManual(null)} className="w-12 h-12 bg-stone-800 text-white rounded-full shadow-lg border border-stone-700 flex items-center justify-center text-xl font-bold">
-            ✓
-          </button>
-          <button onClick={() => abrirFormularioNuevo('Gasto', 'Necesario')} className="w-12 h-12 bg-emerald-500 text-stone-950 rounded-full shadow-lg flex items-center justify-center text-2xl font-bold">
-            +
-          </button>
+          <button onClick={() => abrirModalHabitoManual(null)} className="w-12 h-12 bg-stone-800 text-white rounded-full shadow-lg border border-stone-700 flex items-center justify-center text-xl font-bold">✓</button>
+          <button onClick={() => abrirFormularioNuevo('Gasto', 'Necesario')} className="w-12 h-12 bg-emerald-500 text-stone-950 rounded-full shadow-lg flex items-center justify-center text-2xl font-bold">+</button>
         </div>
 
-        {/* --- VISTAS --- */}
+        {/* VISTAS */}
         {vistaActual === 'dashboard' && (
           <div className="space-y-6 md:space-y-10 animate-fade-in">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
@@ -391,16 +417,15 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* --- DEMÁS VISTAS (Iguales pero con overflow adaptado a mobile) --- */}
         {vistaActual === 'agenda' && (
           <div className="space-y-6 animate-fade-in">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
               <div>
                 <h1 className="text-2xl font-light tracking-tight text-stone-100">Línea de Tiempo</h1>
-                <p className="text-xs text-stone-500 mt-1">Configura tu rutina base de 3 semanas.</p>
+                <p className="text-xs text-stone-500 mt-1">Configura los eventos dentro de tus 21 días fijos.</p>
               </div>
-              <button onClick={() => abrirModalAgenda()} className="w-full sm:w-auto bg-stone-800 text-stone-100 text-xs px-4 py-3 rounded-xl border border-stone-700 font-bold">
-                + Agregar Bloque
+              <button onClick={() => abrirModalAgenda()} className="w-full sm:w-auto bg-stone-800 text-stone-100 text-xs px-4 py-3 rounded-xl border border-stone-700 font-bold hover:bg-stone-700 transition">
+                + Nuevo Evento
               </button>
             </header>
             <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide snap-x">
@@ -411,13 +436,16 @@ export default function Dashboard() {
             <section className="bg-stone-900 rounded-3xl border border-stone-800 shadow-lg p-4 md:p-6">
               <h2 className="text-sm font-medium text-stone-200 mb-4 border-b border-stone-800 pb-4">Eventos del Día {diaAgendaSeleccionado}</h2>
               <div className="space-y-3">
-                {agendaFiltradaVista.length === 0 ? <p className="text-sm text-stone-500 italic">No hay eventos.</p> : agendaFiltradaVista.map(e => (
+                {agendaFiltradaVista.length === 0 ? <p className="text-sm text-stone-500 italic">No hay eventos guardados en este día.</p> : agendaFiltradaVista.map(e => (
                   <div key={e.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-stone-950 p-4 rounded-xl border border-stone-800 gap-4">
                     <div className="flex items-center gap-4">
-                      <span className="text-stone-400 font-mono text-xs md:text-sm w-24">{e.horaInicio}</span>
+                      <span className="text-stone-400 font-mono text-xs md:text-sm w-24">{e.horaInicio} - {e.horaFin}</span>
                       <div><p className="text-stone-100 font-bold">{e.titulo}</p><p className="text-[9px] text-stone-600 uppercase tracking-widest mt-0.5">{e.tipo}</p></div>
                     </div>
-                    <div className="space-x-4 self-end sm:self-auto"><button onClick={() => abrirModalAgenda(e)} className="text-stone-500 font-bold text-xs">Editar</button><button onClick={() => borrarEventoAgenda(e.id)} className="text-rose-500 font-bold text-xs">Borrar</button></div>
+                    <div className="space-x-4 self-end sm:self-auto">
+                      <button onClick={() => abrirModalAgenda(e)} className="text-stone-500 hover:text-stone-200 font-bold text-xs transition">Editar</button>
+                      <button onClick={() => borrarEventoAgenda(e.id)} className="text-rose-500 hover:text-rose-400 font-bold text-xs transition">Borrar</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -505,6 +533,49 @@ export default function Dashboard() {
                   ))}
                 </div>
                 <div className="flex gap-3 pt-2"><button type="button" onClick={() => setModalHabitoManual(false)} className="flex-1 bg-stone-950 text-stone-400 border border-stone-800 py-3 rounded-xl font-bold">Cancelar</button><button type="submit" className="flex-1 bg-stone-100 text-stone-950 py-3 rounded-xl font-bold">Guardar</button></div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ¡AQUÍ ESTÁ EL MODAL QUE FALTABA PARA LA AGENDA! */}
+        {modalAgendaAbierto && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-stone-900 w-full max-w-md rounded-2xl shadow-2xl border border-stone-700 overflow-hidden p-5 md:p-6 space-y-5">
+              <div className="flex justify-between items-center border-b border-stone-800 pb-3">
+                <h3 className="font-semibold text-base text-stone-100">{eventoEdit.id ? 'Editar Evento' : `Nuevo Evento - Día ${diaAgendaSeleccionado}`}</h3>
+                <button onClick={() => setModalAgendaAbierto(false)} className="text-stone-500 text-lg">×</button>
+              </div>
+              <form onSubmit={guardarEventoAgenda} className="space-y-4 text-xs">
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="block text-[10px] text-stone-500 mb-1 font-bold uppercase tracking-wider">Hora Inicio</label>
+                    <input type="time" required value={eventoEdit.horaInicio} onChange={e => setEventoEdit({...eventoEdit, horaInicio: e.target.value})} className="w-full bg-stone-950 border border-stone-800 p-3 rounded-xl text-stone-200 [color-scheme:dark] outline-none focus:border-emerald-500 transition" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-[10px] text-stone-500 mb-1 font-bold uppercase tracking-wider">Hora Fin</label>
+                    <input type="time" required value={eventoEdit.horaFin} onChange={e => setEventoEdit({...eventoEdit, horaFin: e.target.value})} className="w-full bg-stone-950 border border-stone-800 p-3 rounded-xl text-stone-200 [color-scheme:dark] outline-none focus:border-emerald-500 transition" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-stone-500 mb-1 font-bold uppercase tracking-wider">Título del Evento</label>
+                  <input type="text" required value={eventoEdit.titulo} onChange={e => setEventoEdit({...eventoEdit, titulo: e.target.value})} placeholder="Ej: Gimnasio, TUP, Trabajo" className="w-full bg-stone-950 border border-stone-800 p-3 rounded-xl text-stone-200 outline-none focus:border-emerald-500 transition" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-stone-500 mb-1 font-bold uppercase tracking-wider">Tipo de Evento</label>
+                  <select value={eventoEdit.tipo} onChange={e => setEventoEdit({...eventoEdit, tipo: e.target.value})} className="w-full bg-stone-950 border border-stone-800 p-3 rounded-xl text-stone-200 outline-none cursor-pointer focus:border-emerald-500 transition">
+                    <option value="Obligacion">Obligación</option>
+                    <option value="Estudio">Estudio</option>
+                    <option value="Salud">Salud</option>
+                    <option value="Rutina">Rutina</option>
+                    <option value="Ocio">Ocio</option>
+                    <option value="Auditoria">Auditoría</option>
+                  </select>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setModalAgendaAbierto(false)} className="flex-1 bg-stone-950 text-stone-400 border border-stone-800 py-3 rounded-xl font-bold hover:bg-stone-800 transition">Cancelar</button>
+                  <button type="submit" className="flex-1 bg-stone-100 text-stone-950 py-3 rounded-xl font-bold hover:bg-white transition">Guardar</button>
+                </div>
               </form>
             </div>
           </div>
