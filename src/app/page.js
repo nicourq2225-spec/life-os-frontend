@@ -99,11 +99,19 @@ export default function Dashboard() {
 
   const obtenerRequeridos = (fechaStr) => {
     const d = new Date(fechaStr + "T12:00:00");
-    const diaSem = d.getDay(); 
+    const diaSem = d.getDay(); // 0 es Domingo, 1 es Lunes, 2 es Martes...
     const requeridos = [];
-    if (diaSem >= 1 && diaSem <= 5) requeridos.push('Nutrición', 'Abstinencia', 'Auditoría');
-    if (diaSem === 1 || diaSem === 3 || diaSem === 5) requeridos.push('Entrenamiento');
-    if (diaSem === 2 || diaSem === 4) requeridos.push('Estudio');
+    
+    // De Lunes a Viernes (días 1 al 5) exigimos todo esto:
+    if (diaSem >= 1 && diaSem <= 5) {
+      requeridos.push('Nutrición', 'Abstinencia', 'Auditoría', 'Estudio');
+    }
+    
+    // Entrenamiento: Lunes (1), Martes (2), Jueves (4) y Viernes (5)
+    if (diaSem === 1 || diaSem === 2 || diaSem === 4 || diaSem === 5) {
+      requeridos.push('Entrenamiento');
+    }
+    
     return requeridos; 
   };
 
