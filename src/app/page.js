@@ -60,7 +60,6 @@ export default function Dashboard() {
   const [agendaCompleta, setAgendaCompleta] = useState([]);
   const [diaAgendaSeleccionado, setDiaAgendaSeleccionado] = useState(calcularDiaCiclo(obtenerFechaLocal()));
   
-  // ESTADO MODAL AGENDA (Este es el que faltaba mostrar)
   const [modalAgendaAbierto, setModalAgendaAbierto] = useState(false);
   const [eventoEdit, setEventoEdit] = useState({ id: null, horaInicio: '08:00', horaFin: '09:00', titulo: '', tipo: 'Obligacion' });
 
@@ -97,19 +96,25 @@ export default function Dashboard() {
 
   useEffect(() => { cargarDatosGlobales(); }, [mesFiltro, anioFiltro, fechaDashboard]);
 
+  // LOGICA DE DÍAS ACTUALIZADA A LA RUTINA CLÁSICA
   const obtenerRequeridos = (fechaStr) => {
     const d = new Date(fechaStr + "T12:00:00");
-    const diaSem = d.getDay(); // 0 es Domingo, 1 es Lunes, 2 es Martes...
+    const diaSem = d.getDay(); // 0 es Domingo, 1 es Lunes...
     const requeridos = [];
     
-    // De Lunes a Viernes (días 1 al 5) exigimos todo esto:
+    // Hábitos base de Lunes a Viernes
     if (diaSem >= 1 && diaSem <= 5) {
-      requeridos.push('Nutrición', 'Abstinencia', 'Auditoría', 'Estudio');
+      requeridos.push('Nutrición', 'Abstinencia', 'Auditoría');
     }
     
-    // Entrenamiento: Lunes (1), Martes (2), Jueves (4) y Viernes (5)
-    if (diaSem === 1 || diaSem === 2 || diaSem === 4 || diaSem === 5) {
+    // Entrenamiento: Lunes (1), Miércoles (3) y Viernes (5)
+    if (diaSem === 1 || diaSem === 3 || diaSem === 5) {
       requeridos.push('Entrenamiento');
+    }
+    
+    // Estudio: Martes (2) y Jueves (4)
+    if (diaSem === 2 || diaSem === 4) {
+      requeridos.push('Estudio');
     }
     
     return requeridos; 
@@ -167,7 +172,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- LÓGICA DE AGENDA (AQUÍ ESTÁN TUS BOTONES) ---
   const agendaFiltradaVista = agendaCompleta.filter(e => e.diaCiclo === diaAgendaSeleccionado).sort((a,b) => a.horaInicio.localeCompare(b.horaInicio));
   
   const abrirModalAgenda = (evento = null) => { 
@@ -546,7 +550,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ¡AQUÍ ESTÁ EL MODAL QUE FALTABA PARA LA AGENDA! */}
         {modalAgendaAbierto && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-stone-900 w-full max-w-md rounded-2xl shadow-2xl border border-stone-700 overflow-hidden p-5 md:p-6 space-y-5">
