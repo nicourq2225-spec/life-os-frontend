@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// CONEXIÓN A TU BACKEND EN RENDER (Vía Vercel)
+// CONEXIÓN A TU BACKEND
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 const MAPA_CATEGORIAS = {
@@ -59,9 +59,13 @@ export default function Dashboard() {
   
   const [agendaCompleta, setAgendaCompleta] = useState([]);
   const [diaAgendaSeleccionado, setDiaAgendaSeleccionado] = useState(calcularDiaCiclo(obtenerFechaLocal()));
-  
   const [modalAgendaAbierto, setModalAgendaAbierto] = useState(false);
   const [eventoEdit, setEventoEdit] = useState({ id: null, horaInicio: '08:00', horaFin: '09:00', titulo: '', tipo: 'Obligacion' });
+
+  // ESTADOS PARA ESTUDIO
+  const [estudioData, setEstudioData] = useState([]);
+  const [modalEstudioAbierto, setModalEstudioAbierto] = useState(false);
+  const [formEstudio, setFormEstudio] = useState({ id: null, fecha: obtenerFechaLocal(), materia: '', completado: false });
 
   const [modalAbierto, setModalAbierto] = useState(false);
   const [formId, setFormId] = useState(null); 
@@ -91,32 +95,21 @@ export default function Dashboard() {
       const resFinanzas = await axios.get(`${API_URL}/api/finanzas?mes=${mesFiltro}&anio=${anioFiltro}`); 
       setTransacciones(resFinanzas.data.transacciones || []); 
       setResumenMes(resFinanzas.data.resumen || { ingresos: 0, necesarios: 0, innecesarios: 0 });
+
+      const resEstudio = await axios.get(`${API_URL}/api/estudio`);
+      setEstudioData(resEstudio.data || []);
     } catch (error) { console.error("Error conectando al servidor:", error); }
   };
 
   useEffect(() => { cargarDatosGlobales(); }, [mesFiltro, anioFiltro, fechaDashboard]);
 
-  // LOGICA DE DÍAS ACTUALIZADA A LA RUTINA CLÁSICA
   const obtenerRequeridos = (fechaStr) => {
     const d = new Date(fechaStr + "T12:00:00");
-    const diaSem = d.getDay(); // 0 es Domingo, 1 es Lunes...
+    const diaSem = d.getDay(); 
     const requeridos = [];
-    
-    // Hábitos base de Lunes a Viernes
-    if (diaSem >= 1 && diaSem <= 5) {
-      requeridos.push('Nutrición', 'Abstinencia', 'Auditoría');
-    }
-    
-    // Entrenamiento: Lunes (1), Miércoles (3) y Viernes (5)
-    if (diaSem === 1 || diaSem === 3 || diaSem === 5) {
-      requeridos.push('Entrenamiento');
-    }
-    
-    // Estudio: Martes (2) y Jueves (4)
-    if (diaSem === 2 || diaSem === 4) {
-      requeridos.push('Estudio');
-    }
-    
+    if (diaSem >= 1 && diaSem <= 5) requeridos.push('Nutrición', 'Abstinencia', 'Auditoría');
+    if (diaSem === 1 || diaSem === 3 || diaSem === 5) requeridos.push('Entrenamiento');
+    if (diaSem === 2 || diaSem === 4) requeridos.push('Estudio');
     return requeridos; 
   };
 
@@ -125,123 +118,96 @@ export default function Dashboard() {
   const habitoDelDia = historialHabitos.find(h => h.fecha === fechaDashboard) || { fuerza: null, nutricion: null, abstinencia: null, auditoria: null, estudio: null };
   const requeridosHoy = obtenerRequeridos(fechaDashboard);
   
+  // LOGICA PARA EL TABLERO GENERAL
+  const gastosHoy = transacciones.filter(t => t.tipo === 'Gasto' && t.fecha.split('T')[0] === fechaDashboard).reduce((acc, curr) => acc + parseFloat(curr.monto), 0);
+  const temaDeHoy = estudioData.find(e => e.fecha === fechaDashboard);
+
   const toggleHabitoDashboard = async (campo) => {
     const valActual = habitoDelDia[campo];
     const nuevoVal = valActual === true ? false : true;
     try { 
       await axios.post(`${API_URL}/api/habitos`, { 
-        fecha: fechaDashboard, 
-        fuerza: campo === 'fuerza' ? nuevoVal : habitoDelDia.fuerza, 
-        nutricion: campo === 'nutricion' ? nuevoVal : habitoDelDia.nutricion, 
-        abstinencia: campo === 'abstinencia' ? nuevoVal : habitoDelDia.abstinencia, 
-        auditoria: campo === 'auditoria' ? nuevoVal : habitoDelDia.auditoria, 
-        estudio: campo === 'estudio' ? nuevoVal : habitoDelDia.estudio 
+        fecha: fechaDashboard, fuerza: campo === 'fuerza' ? nuevoVal : habitoDelDia.fuerza, nutricion: campo === 'nutricion' ? nuevoVal : habitoDelDia.nutricion, abstinencia: campo === 'abstinencia' ? nuevoVal : habitoDelDia.abstinencia, auditoria: campo === 'auditoria' ? nuevoVal : habitoDelDia.auditoria, estudio: campo === 'estudio' ? nuevoVal : habitoDelDia.estudio 
       }); 
       cargarDatosGlobales(); 
     } catch (error) { console.error(error); } 
   };
 
-  const mapDBtoForm = (val) => val === null ? 'descanso' : val === true ? 'cumplido' : 'nocumplido';
-  const mapFormtoDB = (val) => val === 'descanso' ? null : val === 'cumplido' ? true : false;
-
-  const abrirModalHabitoManual = (h = null) => {
-    if (h) {
-      setFormHabitoManual({ id: h.id, fecha: h.fecha, Entrenamiento: mapDBtoForm(h.fuerza), Nutrición: mapDBtoForm(h.nutricion), Abstinencia: mapDBtoForm(h.abstinencia), Auditoría: mapDBtoForm(h.auditoria), Estudio: mapDBtoForm(h.estudio) });
-    } else {
-      setFormHabitoManual({ id: null, fecha: obtenerFechaLocal(), Entrenamiento: 'descanso', Nutrición: 'descanso', Abstinencia: 'descanso', Auditoría: 'descanso', Estudio: 'descanso' });
-    }
-    setModalHabitoManual(true);
+  // FUNCIONES ESTUDIO
+  const abrirModalEstudio = (item = null) => {
+    if (item) setFormEstudio({ id: item.id, fecha: item.fecha, materia: item.materia, completado: item.completado });
+    else setFormEstudio({ id: null, fecha: obtenerFechaLocal(), materia: '', completado: false });
+    setModalEstudioAbierto(true);
   };
 
-  const handleFechaHabitoChange = (nuevaFecha) => {
-    const record = historialHabitos.find(h => h.fecha === nuevaFecha) || {};
-    setFormHabitoManual({ id: record.id || null, fecha: nuevaFecha, Entrenamiento: mapDBtoForm(record.fuerza), Nutrición: mapDBtoForm(record.nutricion), Abstinencia: mapDBtoForm(record.abstinencia), Auditoría: mapDBtoForm(record.auditoria), Estudio: mapDBtoForm(record.estudio) });
-  };
-
-  const manejarEnvioHabitoManual = async (e) => {
+  const guardarEstudio = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${API_URL}/api/habitos`, { fecha: formHabitoManual.fecha, fuerza: mapFormtoDB(formHabitoManual.Entrenamiento), nutricion: mapFormtoDB(formHabitoManual.Nutrición), abstinencia: mapFormtoDB(formHabitoManual.Abstinencia), auditoria: mapFormtoDB(formHabitoManual.Auditoría), estudio: mapFormtoDB(formHabitoManual.Estudio) });
-      setModalHabitoManual(false); cargarDatosGlobales();
-    } catch (error) { console.error(error); }
+      if (formEstudio.id) await axios.put(`${API_URL}/api/estudio/${formEstudio.id}`, formEstudio);
+      else await axios.post(`${API_URL}/api/estudio`, formEstudio);
+      setModalEstudioAbierto(false);
+      cargarDatosGlobales();
+    } catch (err) { console.error(err); }
   };
 
-  const borrarHabitoManual = async (id) => {
-    if (window.confirm("¿Seguro que deseas eliminar este registro?")) {
-      try { await axios.delete(`${API_URL}/api/habitos/${id}`); cargarDatosGlobales(); } catch (error) { console.error(error); }
+  const borrarEstudio = async (id) => {
+    if (window.confirm("¿Eliminar este tema?")) {
+      try { await axios.delete(`${API_URL}/api/estudio/${id}`); cargarDatosGlobales(); } catch (err) { console.error(err); }
     }
   };
+
+  const toggleCompletadoEstudio = async (item) => {
+    try { await axios.put(`${API_URL}/api/estudio/${item.id}`, { ...item, completado: !item.completado }); cargarDatosGlobales(); } catch (err) { console.error(err); }
+  };
+
+  // FUNCIONES DE HÁBITOS, AGENDA Y FINANZAS
+  const mapDBtoForm = (val) => val === null ? 'descanso' : val === true ? 'cumplido' : 'nocumplido';
+  const mapFormtoDB = (val) => val === 'descanso' ? null : val === 'cumplido' ? true : false;
+  const abrirModalHabitoManual = (h = null) => { if (h) setFormHabitoManual({ id: h.id, fecha: h.fecha, Entrenamiento: mapDBtoForm(h.fuerza), Nutrición: mapDBtoForm(h.nutricion), Abstinencia: mapDBtoForm(h.abstinencia), Auditoría: mapDBtoForm(h.auditoria), Estudio: mapDBtoForm(h.estudio) }); else setFormHabitoManual({ id: null, fecha: obtenerFechaLocal(), Entrenamiento: 'descanso', Nutrición: 'descanso', Abstinencia: 'descanso', Auditoría: 'descanso', Estudio: 'descanso' }); setModalHabitoManual(true); };
+  const handleFechaHabitoChange = (nuevaFecha) => { const record = historialHabitos.find(h => h.fecha === nuevaFecha) || {}; setFormHabitoManual({ id: record.id || null, fecha: nuevaFecha, Entrenamiento: mapDBtoForm(record.fuerza), Nutrición: mapDBtoForm(record.nutricion), Abstinencia: mapDBtoForm(record.abstinencia), Auditoría: mapDBtoForm(record.auditoria), Estudio: mapDBtoForm(record.estudio) }); };
+  const manejarEnvioHabitoManual = async (e) => { e.preventDefault(); try { await axios.post(`${API_URL}/api/habitos`, { fecha: formHabitoManual.fecha, fuerza: mapFormtoDB(formHabitoManual.Entrenamiento), nutricion: mapFormtoDB(formHabitoManual.Nutrición), abstinencia: mapFormtoDB(formHabitoManual.Abstinencia), auditoria: mapFormtoDB(formHabitoManual.Auditoría), estudio: mapFormtoDB(formHabitoManual.Estudio) }); setModalHabitoManual(false); cargarDatosGlobales(); } catch (error) { console.error(error); } };
+  const borrarHabitoManual = async (id) => { if (window.confirm("¿Seguro que deseas eliminar este registro?")) { try { await axios.delete(`${API_URL}/api/habitos/${id}`); cargarDatosGlobales(); } catch (error) {} } };
 
   const agendaFiltradaVista = agendaCompleta.filter(e => e.diaCiclo === diaAgendaSeleccionado).sort((a,b) => a.horaInicio.localeCompare(b.horaInicio));
-  
-  const abrirModalAgenda = (evento = null) => { 
-    if (evento) {
-      setEventoEdit({ id: evento.id, horaInicio: evento.horaInicio, horaFin: evento.horaFin, titulo: evento.titulo, tipo: evento.tipo }); 
-    } else {
-      setEventoEdit({ id: null, horaInicio: '08:00', horaFin: '09:00', titulo: '', tipo: 'Obligacion' }); 
-    }
-    setModalAgendaAbierto(true); 
-  };
-
-  const guardarEventoAgenda = async (e) => { 
-    e.preventDefault(); 
-    const payload = { ...eventoEdit, diaCiclo: diaAgendaSeleccionado }; 
-    try { 
-      if (eventoEdit.id) {
-        await axios.put(`${API_URL}/api/agenda/${eventoEdit.id}`, payload); 
-      } else {
-        await axios.post(`${API_URL}/api/agenda`, payload); 
-      }
-      setModalAgendaAbierto(false); 
-      cargarDatosGlobales(); 
-    } catch (error) { console.error(error); } 
-  };
-
-  const borrarEventoAgenda = async (id) => { 
-    if (window.confirm("¿Estás seguro de que quieres eliminar este evento?")) { 
-      try { 
-        await axios.delete(`${API_URL}/api/agenda/${id}`); 
-        cargarDatosGlobales(); 
-      } catch(e) { console.error(e); } 
-    } 
-  };
+  const abrirModalAgenda = (evento = null) => { if (evento) { setEventoEdit({ id: evento.id, horaInicio: evento.horaInicio, horaFin: evento.horaFin, titulo: evento.titulo, tipo: evento.tipo }); } else { setEventoEdit({ id: null, horaInicio: '08:00', horaFin: '09:00', titulo: '', tipo: 'Obligacion' }); } setModalAgendaAbierto(true); };
+  const guardarEventoAgenda = async (e) => { e.preventDefault(); const payload = { ...eventoEdit, diaCiclo: diaAgendaSeleccionado }; try { if (eventoEdit.id) { await axios.put(`${API_URL}/api/agenda/${eventoEdit.id}`, payload); } else { await axios.post(`${API_URL}/api/agenda`, payload); } setModalAgendaAbierto(false); cargarDatosGlobales(); } catch (error) {} };
+  const borrarEventoAgenda = async (id) => { if (window.confirm("¿Estás seguro de que quieres eliminar este evento?")) { try { await axios.delete(`${API_URL}/api/agenda/${id}`); cargarDatosGlobales(); } catch(e) {} } };
 
   const abrirFormularioNuevo = (tipo = 'Gasto', subTipo = 'Necesario') => { setFormId(null); setFormTipo(tipo); setFormSubTipo(subTipo); setFormMonto(''); setFormCategoria('Alquiler'); setFormAplicacion(''); setFormFecha(obtenerFechaLocal()); setModalAbierto(true); };
   const abrirFormularioEdicion = (t) => { setFormId(t.id); setFormTipo(t.tipo); setFormSubTipo(t.categoria === 'Ingreso' ? 'Necesario' : t.categoria); setFormMonto(t.monto); setFormCategoria(t.categoriaFinanzas || 'Desconocido'); setFormAplicacion(t.aplicacion || ''); setFormFecha(t.fecha.split('T')[0]); setModalAbierto(true); };
   const manejarEliminar = async (id) => { if (window.confirm("¿Eliminar registro?")) { try { await axios.delete(`${API_URL}/api/finanzas/${id}`); cargarDatosGlobales(); } catch (error) {} } };
   
-  const manejarEnvioFormulario = async (e) => { 
-    e.preventDefault(); if (!formMonto || parseFloat(formMonto) <= 0) return; 
-    const fechaSegura = formFecha.includes('T') ? formFecha : formFecha + 'T12:00:00';
-    const payload = { monto: formMonto, tipo: formTipo, subTipo: formSubTipo, categoriaFinanzas: formTipo === 'Ingreso' ? 'Ingreso' : formCategoria, aplicacion: formAplicacion || 'Efectivo', fecha: fechaSegura }; 
-    try { 
-      if (formId) await axios.put(`${API_URL}/api/finanzas/${formId}`, payload); else await axios.post(`${API_URL}/api/finanzas`, payload); 
-      setModalAbierto(false); cargarDatosGlobales(); 
-    } catch (error) {} 
-  };
+  const manejarEnvioFormulario = async (e) => { e.preventDefault(); if (!formMonto || parseFloat(formMonto) <= 0) return; const fechaSegura = formFecha.includes('T') ? formFecha : formFecha + 'T12:00:00'; const payload = { monto: formMonto, tipo: formTipo, subTipo: formSubTipo, categoriaFinanzas: formTipo === 'Ingreso' ? 'Ingreso' : formCategoria, aplicacion: formAplicacion || 'Efectivo', fecha: fechaSegura }; try { if (formId) await axios.put(`${API_URL}/api/finanzas/${formId}`, payload); else await axios.post(`${API_URL}/api/finanzas`, payload); setModalAbierto(false); cargarDatosGlobales(); } catch (error) {} };
 
   const formatearMoneda = (val) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(val);
 
   const procesarAuditoria = () => {
-    const gastosAgrupados = {}; Object.keys(MAPA_CATEGORIAS).forEach(cat => gastosAgrupados[cat] = 0);
-    let maxGastoCategoria = 0;
+    const gastosAgrupados = {}; const gastosPorSub = {};
+    Object.keys(MAPA_CATEGORIAS).forEach(cat => gastosAgrupados[cat] = 0);
+    
     transacciones.forEach(t => {
       if (t.tipo === 'Gasto') {
+        const subCat = t.categoriaFinanzas || 'Desconocido';
+        gastosPorSub[subCat] = (gastosPorSub[subCat] || 0) + parseFloat(t.monto);
+        
         let categoriaAsignada = "Desconocido";
-        for (const [catMayor, subCats] of Object.entries(MAPA_CATEGORIAS)) { if (subCats.some(sc => sc.toLowerCase() === (t.categoriaFinanzas || '').toLowerCase())) { categoriaAsignada = catMayor; break; } }
+        for (const [catMayor, subCats] of Object.entries(MAPA_CATEGORIAS)) { if (subCats.some(sc => sc.toLowerCase() === subCat.toLowerCase())) { categoriaAsignada = catMayor; break; } }
         gastosAgrupados[categoriaAsignada] += parseFloat(t.monto);
       }
     });
+    
     const ranking = Object.entries(gastosAgrupados).map(([nombre, monto]) => ({ nombre, monto })).sort((a, b) => b.monto - a.monto);
-    if (ranking.length > 0) maxGastoCategoria = ranking[0].monto;
-    return { ranking, maxGastoCategoria };
+    const rankingSub = Object.entries(gastosPorSub).map(([nombre, monto]) => ({ nombre, monto })).sort((a, b) => b.monto - a.monto);
+    return { ranking, rankingSub, maxGastoCategoria: ranking.length > 0 ? ranking[0].monto : 0 };
   };
 
-  const { ranking, maxGastoCategoria } = procesarAuditoria();
+  const { ranking, rankingSub, maxGastoCategoria } = procesarAuditoria();
   const contadorCumplidosHoy = [habitoDelDia.fuerza, habitoDelDia.nutricion, habitoDelDia.abstinencia, habitoDelDia.auditoria, habitoDelDia.estudio].filter(v => v === true).length;
-  const totalRequeridosHoy = requeridosHoy.length;
-  const progresoHabitos = totalRequeridosHoy === 0 ? 100 : Math.round((contadorCumplidosHoy / totalRequeridosHoy) * 100);
+  const progresoHabitos = requeridosHoy.length === 0 ? 100 : Math.round((contadorCumplidosHoy / requeridosHoy.length) * 100);
+  
+  // CALCULOS FINANZAS
   const totalGastosMes = resumenMes.necesarios + resumenMes.innecesarios;
+  const restanteMes = resumenMes.ingresos - totalGastosMes;
 
   const renderBadge = (val) => {
     if (val === true) return <span className="bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded text-[10px] font-bold">CUMPLIDO</span>;
@@ -251,34 +217,17 @@ export default function Dashboard() {
 
   const procesarHabitosEstadisticas = () => {
     const stats = { mes: { Salud: { req: 0, cump: 0 }, Disciplina: { req: 0, cump: 0 }, Estudio: { req: 0, cump: 0 } }, semana: { Salud: { req: 0, cump: 0 }, Disciplina: { req: 0, cump: 0 }, Estudio: { req: 0, cump: 0 } } };
-    const hoy = new Date();
-    const currentDay = hoy.getDay(); 
-    const diffToMonday = hoy.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
+    const hoy = new Date(); const currentDay = hoy.getDay(); const diffToMonday = hoy.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
     const startOfWeek = new Date(hoy.getFullYear(), hoy.getMonth(), diffToMonday); startOfWeek.setHours(0,0,0,0);
     const endOfWeek = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6); endOfWeek.setHours(23,59,59,999);
 
     historialHabitos.forEach(record => {
-      const fechaObj = new Date(record.fecha + "T12:00:00");
-      const reqsHistoricos = obtenerRequeridos(record.fecha);
-      const esEstaSemana = fechaObj >= startOfWeek && fechaObj <= endOfWeek;
-
-      Object.entries(CAT_HABITOS).forEach(([cat, subs]) => {
-        subs.forEach(sub => {
-          const esRequerido = reqsHistoricos.includes(sub);
-          const fueCumplido = record[DB_FIELDS_HABITOS[sub]] === true;
-          if (esRequerido) {
-             stats.mes[cat].req++; if (fueCumplido) stats.mes[cat].cump++;
-             if (esEstaSemana) { stats.semana[cat].req++; if (fueCumplido) stats.semana[cat].cump++; }
-          }
-        });
-      });
+      const fechaObj = new Date(record.fecha + "T12:00:00"); const reqsHistoricos = obtenerRequeridos(record.fecha); const esEstaSemana = fechaObj >= startOfWeek && fechaObj <= endOfWeek;
+      Object.entries(CAT_HABITOS).forEach(([cat, subs]) => { subs.forEach(sub => { const esRequerido = reqsHistoricos.includes(sub); const fueCumplido = record[DB_FIELDS_HABITOS[sub]] === true; if (esRequerido) { stats.mes[cat].req++; if (fueCumplido) stats.mes[cat].cump++; if (esEstaSemana) { stats.semana[cat].req++; if (fueCumplido) stats.semana[cat].cump++; } } }); });
     });
 
     const getPct = (req, cump) => req === 0 ? 0 : Math.round((cump / req) * 100);
-    return { 
-      mes: { Salud: getPct(stats.mes.Salud.req, stats.mes.Salud.cump), Disciplina: getPct(stats.mes.Disciplina.req, stats.mes.Disciplina.cump), Estudio: getPct(stats.mes.Estudio.req, stats.mes.Estudio.cump) }, 
-      semana: { Salud: getPct(stats.semana.Salud.req, stats.semana.Salud.cump), Disciplina: getPct(stats.semana.Disciplina.req, stats.semana.Disciplina.cump), Estudio: getPct(stats.semana.Estudio.req, stats.semana.Estudio.cump) } 
-    };
+    return { mes: { Salud: getPct(stats.mes.Salud.req, stats.mes.Salud.cump), Disciplina: getPct(stats.mes.Disciplina.req, stats.mes.Disciplina.cump), Estudio: getPct(stats.mes.Estudio.req, stats.mes.Estudio.cump) }, semana: { Salud: getPct(stats.semana.Salud.req, stats.semana.Salud.cump), Disciplina: getPct(stats.semana.Disciplina.req, stats.semana.Disciplina.cump), Estudio: getPct(stats.semana.Estudio.req, stats.semana.Estudio.cump) } };
   };
 
   const pcts = procesarHabitosEstadisticas();
@@ -290,12 +239,12 @@ export default function Dashboard() {
         {/* NAVEGACIÓN DESKTOP */}
         <div className="hidden md:flex flex-col xl:flex-row justify-between items-start xl:items-center border-b border-stone-800 pb-4 gap-4">
           <div className="flex gap-6 overflow-x-auto w-full xl:w-auto scrollbar-hide">
-            {['dashboard', 'finanzas', 'auditoria', 'habitos', 'agenda'].map((tab) => (
+            {['dashboard', 'finanzas', 'auditoria', 'estudio', 'habitos', 'agenda'].map((tab) => (
               <button 
                 key={tab} onClick={() => setVistaActual(tab)} 
                 className={`pb-3 text-sm font-medium whitespace-nowrap tracking-tight border-b-2 transition-all capitalize ${vistaActual === tab ? 'border-stone-200 text-stone-100 font-semibold' : 'border-transparent text-stone-500 hover:text-stone-300'}`}
               >
-                {tab === 'dashboard' ? 'Comando' : tab === 'finanzas' ? 'Finanzas' : tab === 'auditoria' ? 'Auditoría' : tab === 'habitos' ? 'Hábitos' : 'Agenda'}
+                {tab === 'dashboard' ? 'Comando' : tab === 'finanzas' ? 'Finanzas' : tab === 'auditoria' ? 'Auditoría' : tab === 'estudio' ? 'Estudio' : tab === 'habitos' ? 'Hábitos' : 'Agenda'}
               </button>
             ))}
           </div>
@@ -311,28 +260,25 @@ export default function Dashboard() {
               </select>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => abrirModalHabitoManual(null)} className="bg-stone-800 text-stone-200 text-xs px-4 py-2.5 rounded-xl shadow-sm border border-stone-700 hover:bg-stone-700 transition font-bold whitespace-nowrap">
-                ✓ Registrar Día
-              </button>
-              <button onClick={() => abrirFormularioNuevo('Gasto', 'Necesario')} className="bg-stone-100 text-stone-950 text-xs px-4 py-2.5 rounded-xl shadow-sm hover:bg-white transition font-bold whitespace-nowrap">
-                + Transacción
-              </button>
+              <button onClick={() => abrirModalHabitoManual(null)} className="bg-stone-800 text-stone-200 text-xs px-4 py-2.5 rounded-xl shadow-sm border border-stone-700 hover:bg-stone-700 transition font-bold whitespace-nowrap">✓ Registrar Día</button>
+              <button onClick={() => abrirFormularioNuevo('Gasto', 'Necesario')} className="bg-stone-100 text-stone-950 text-xs px-4 py-2.5 rounded-xl shadow-sm hover:bg-white transition font-bold whitespace-nowrap">+ Transacción</button>
             </div>
           </div>
         </div>
 
         {/* NAVEGACIÓN MÓVIL */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-stone-950/95 backdrop-blur-md border-t border-stone-800 flex justify-around items-center p-3 z-40">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-stone-950/95 backdrop-blur-md border-t border-stone-800 flex justify-around items-center p-3 z-40 overflow-x-auto gap-4">
           {[
             { id: 'dashboard', icon: '⌂', label: 'Inicio' },
             { id: 'finanzas', icon: '$', label: 'Finanzas' },
             { id: 'auditoria', icon: '📊', label: 'Auditoría' },
+            { id: 'estudio', icon: '📚', label: 'Estudio' },
             { id: 'habitos', icon: '✓', label: 'Hábitos' },
             { id: 'agenda', icon: '📅', label: 'Agenda' }
           ].map((tab) => (
             <button 
               key={tab.id} onClick={() => setVistaActual(tab.id)} 
-              className={`flex flex-col items-center gap-1 transition-all ${vistaActual === tab.id ? 'text-emerald-400' : 'text-stone-500 hover:text-stone-300'}`}
+              className={`flex flex-col items-center flex-shrink-0 gap-1 px-1 transition-all ${vistaActual === tab.id ? 'text-emerald-400' : 'text-stone-500 hover:text-stone-300'}`}
             >
               <span className="text-lg leading-none">{tab.icon}</span>
               <span className="text-[9px] font-bold uppercase tracking-wider">{tab.label}</span>
@@ -340,12 +286,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <div className="md:hidden fixed bottom-20 right-4 flex flex-col gap-3 z-40">
-          <button onClick={() => abrirModalHabitoManual(null)} className="w-12 h-12 bg-stone-800 text-white rounded-full shadow-lg border border-stone-700 flex items-center justify-center text-xl font-bold">✓</button>
-          <button onClick={() => abrirFormularioNuevo('Gasto', 'Necesario')} className="w-12 h-12 bg-emerald-500 text-stone-950 rounded-full shadow-lg flex items-center justify-center text-2xl font-bold">+</button>
-        </div>
-
-        {/* VISTAS */}
+        {/* --- VISTA: DASHBOARD --- */}
         {vistaActual === 'dashboard' && (
           <div className="space-y-6 md:space-y-10 animate-fade-in">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
@@ -360,16 +301,16 @@ export default function Dashboard() {
             </header>
 
             <section className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6">
-              <div className="col-span-2 md:col-span-1 bg-stone-900 p-5 md:p-6 rounded-2xl shadow-lg border border-stone-800">
+              <div className="col-span-2 md:col-span-1 bg-stone-900 p-5 md:p-6 rounded-2xl shadow-lg border border-stone-800 flex flex-col justify-center">
                 <h2 className="text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-2 md:mb-4">Energía / Hábitos</h2>
                 <div className="text-3xl md:text-4xl font-light text-stone-100 mb-3">{progresoHabitos}%</div>
                 <div className="w-full bg-stone-950 rounded-full h-1"><div className="bg-emerald-500 h-1 rounded-full transition-all duration-500" style={{ width: `${progresoHabitos}%` }}></div></div>
               </div>
-              <div className="bg-stone-900 p-5 md:p-6 rounded-2xl shadow-lg border border-stone-800">
-                <h2 className="text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-2 md:mb-4">Gastos Necesarios</h2>
-                <div className="text-xl md:text-4xl font-light text-stone-100 truncate">{formatearMoneda(resumenMes.necesarios)}</div>
+              <div className="bg-stone-900 p-5 md:p-6 rounded-2xl shadow-lg border border-stone-800 flex flex-col justify-center">
+                <h2 className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-2 md:mb-4">Gastos del Día</h2>
+                <div className="text-xl md:text-4xl font-light text-stone-100 truncate">{formatearMoneda(gastosHoy)}</div>
               </div>
-              <div className="bg-stone-900 p-5 md:p-6 rounded-2xl shadow-lg border border-stone-800">
+              <div className="bg-stone-900 p-5 md:p-6 rounded-2xl shadow-lg border border-stone-800 flex flex-col justify-center">
                 <h2 className="text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-2 md:mb-4">Progreso Moto</h2>
                 <div className="text-xl md:text-4xl font-light text-stone-100 mb-2 truncate">{motoData.progreso}%</div>
                 <div className="text-[9px] text-stone-500 truncate mb-3">{formatearMoneda(motoData.actual)}</div>
@@ -379,16 +320,30 @@ export default function Dashboard() {
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-10">
               <div className="lg:col-span-2 space-y-6 md:space-y-8">
+                
+                {/* AVISO TEMA DE ESTUDIO (Solo aparece si es Martes o Jueves) */}
+                {requeridosHoy.includes('Estudio') && (
+                  <div className="bg-gradient-to-r from-blue-900/40 to-stone-900 p-5 md:p-6 rounded-3xl border border-blue-900/50 shadow-lg flex items-center justify-between">
+                    <div>
+                      <h2 className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-1">Materia a Estudiar Hoy (TUP)</h2>
+                      {temaDeHoy ? (
+                        <p className="text-xl font-bold text-stone-100">{temaDeHoy.materia}</p>
+                      ) : (
+                        <p className="text-sm font-medium text-stone-400 italic">No asignaste ninguna materia para hoy.</p>
+                      )}
+                    </div>
+                    {temaDeHoy && (
+                       <button onClick={() => toggleCompletadoEstudio(temaDeHoy)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition ${temaDeHoy.completado ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'bg-stone-950 text-stone-400 border-stone-700 hover:border-stone-500'}`}>
+                         {temaDeHoy.completado ? '✓ Completado' : 'Marcar Listo'}
+                       </button>
+                    )}
+                  </div>
+                )}
+
                 <section className="bg-stone-900 p-5 md:p-8 rounded-3xl shadow-lg border border-stone-800">
                   <h2 className="text-sm md:text-base font-medium mb-4 md:mb-6 text-stone-100">Checklist Rápido ({formatearFechaTabla(fechaDashboard)})</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    {[
-                      { nombre: 'Entrenamiento', valor: habitoDelDia.fuerza, db: 'fuerza' },
-                      { nombre: 'Nutrición', valor: habitoDelDia.nutricion, db: 'nutricion' },
-                      { nombre: 'Abstinencia', valor: habitoDelDia.abstinencia, db: 'abstinencia' },
-                      { nombre: 'Auditoría', valor: habitoDelDia.auditoria, db: 'auditoria' },
-                      { nombre: 'Estudio', valor: habitoDelDia.estudio, db: 'estudio' }
-                    ].map((pilar) => {
+                    {[{ nombre: 'Entrenamiento', valor: habitoDelDia.fuerza, db: 'fuerza' }, { nombre: 'Nutrición', valor: habitoDelDia.nutricion, db: 'nutricion' }, { nombre: 'Abstinencia', valor: habitoDelDia.abstinencia, db: 'abstinencia' }, { nombre: 'Auditoría', valor: habitoDelDia.auditoria, db: 'auditoria' }, { nombre: 'Estudio', valor: habitoDelDia.estudio, db: 'estudio' }].map((pilar) => {
                       const requerido = requeridosHoy.includes(pilar.nombre);
                       return (
                         <button key={pilar.nombre} onClick={() => toggleHabitoDashboard(pilar.db)} disabled={!requerido} className={`flex items-center gap-3 p-3 md:p-4 border rounded-xl transition text-left ${!requerido ? 'bg-stone-950 opacity-50 cursor-not-allowed border-stone-900' : pilar.valor === true ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'border-stone-700 hover:bg-stone-800 text-stone-400'}`}>
@@ -429,6 +384,112 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* --- VISTA: ESTUDIO --- */}
+        {vistaActual === 'estudio' && (
+          <div className="space-y-6 animate-fade-in">
+            <header className="flex justify-between items-end gap-4 border-b border-stone-800 pb-4">
+              <div>
+                <h1 className="text-2xl font-light tracking-tight text-stone-100">Planificador de TUP</h1>
+                <p className="text-xs text-stone-500 mt-1">Organiza qué materia estudiar cada martes y jueves.</p>
+              </div>
+              <button onClick={() => abrirModalEstudio()} className="bg-stone-800 text-stone-100 text-xs px-4 py-2.5 rounded-xl border border-stone-700 font-bold hover:bg-stone-700 transition whitespace-nowrap">
+                + Nuevo Tema
+              </button>
+            </header>
+
+            <section className="bg-stone-900 rounded-3xl border border-stone-800 shadow-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-stone-950 text-stone-500 uppercase tracking-wider font-bold text-[9px]">
+                    <tr><th className="p-4">Fecha</th><th className="p-4">Materia / Tema</th><th className="p-4 text-center">Estado</th><th className="p-4 text-center">Acciones</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-800">
+                    {estudioData.length === 0 ? (<tr><td colSpan="4" className="p-8 text-center text-stone-600 italic">No hay temas de estudio programados.</td></tr>) : (
+                      estudioData.map((e) => (
+                        <tr key={e.id} className="hover:bg-stone-800/50 transition">
+                          <td className="p-4 text-stone-400 font-bold">{formatearFechaTabla(e.fecha)}</td>
+                          <td className="p-4 font-bold text-stone-200 text-sm">{e.materia}</td>
+                          <td className="p-4 text-center">
+                            <button onClick={() => toggleCompletadoEstudio(e)} className={`px-2 py-1 rounded text-[10px] font-bold transition ${e.completado ? 'bg-emerald-500/20 text-emerald-400' : 'bg-stone-800 text-stone-400 hover:bg-stone-700'}`}>
+                              {e.completado ? 'COMPLETADO' : 'PENDIENTE'}
+                            </button>
+                          </td>
+                          <td className="p-4 text-center space-x-4">
+                            <button onClick={() => abrirModalEstudio(e)} className="text-stone-500 hover:text-stone-200 transition font-bold text-xs">Editar</button>
+                            <button onClick={() => borrarEstudio(e.id)} className="text-rose-500 hover:text-rose-400 transition font-bold text-xs">Borrar</button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* --- VISTA: FINANZAS (Actualizada con Restante) --- */}
+        {vistaActual === 'finanzas' && (
+          <div className="space-y-6 animate-fade-in">
+            <h1 className="text-2xl font-light tracking-tight text-stone-100 border-b border-stone-800 pb-4">Finanzas</h1>
+            
+            <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800"><h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Ingresos Mes</h3><div className="text-xl font-bold text-emerald-400">{formatearMoneda(resumenMes.ingresos)}</div></div>
+              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800"><h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Gastos Totales</h3><div className="text-xl font-bold text-rose-400">{formatearMoneda(totalGastosMes)}</div></div>
+              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800"><h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Necesarios</h3><div className="text-xl font-bold text-stone-300">{formatearMoneda(resumenMes.necesarios)}</div></div>
+              <div className="col-span-2 md:col-span-1 bg-stone-900 p-4 rounded-2xl border border-blue-900/50 bg-gradient-to-br from-stone-900 to-blue-900/20"><h3 className="text-[10px] font-bold text-blue-400 mb-1 uppercase tracking-widest">Restante</h3><div className={`text-xl font-bold ${restanteMes < 0 ? 'text-rose-500' : 'text-blue-100'}`}>{formatearMoneda(restanteMes)}</div></div>
+            </section>
+
+            <section className="bg-stone-900 rounded-3xl border border-stone-800 overflow-hidden shadow-lg">
+              <div className="p-4 border-b border-stone-800"><h3 className="text-sm font-medium text-stone-200">Historial</h3></div>
+              <div className="overflow-x-auto"><table className="w-full text-left text-xs whitespace-nowrap"><thead className="bg-stone-950 text-stone-500 uppercase tracking-wider font-bold text-[9px]"><tr><th className="p-4">Fecha</th><th className="p-4">Detalle</th><th className="p-4 text-right">Monto</th><th className="p-4 text-center">Acciones</th></tr></thead><tbody className="divide-y divide-stone-800">{transacciones.map((t) => (<tr key={t.id}><td className="p-4 text-stone-400">{formatearFechaTabla(t.fecha)}</td><td className="p-4"><p className="font-bold text-stone-200">{t.categoriaFinanzas}</p><p className="text-[9px] text-stone-500 uppercase tracking-widest mt-0.5">{t.tipo}</p></td><td className={`p-4 text-right font-bold text-sm ${t.tipo==='Ingreso'?'text-emerald-400':'text-stone-300'}`}>{t.tipo==='Ingreso'?'+':'-'}{formatearMoneda(t.monto)}</td><td className="p-4 text-center space-x-4"><button onClick={() => abrirFormularioEdicion(t)} className="text-stone-500 font-bold hover:text-stone-300">Editar</button><button onClick={() => manejarEliminar(t.id)} className="text-rose-500 font-bold hover:text-rose-400">Borrar</button></td></tr>))}</tbody></table></div>
+            </section>
+          </div>
+        )}
+
+        {/* --- VISTA: AUDITORÍA (Con Subcategorías) --- */}
+        {vistaActual === 'auditoria' && (
+          <div className="space-y-6 animate-fade-in">
+            <h1 className="text-2xl font-light text-stone-100 border-b border-stone-800 pb-4">Auditoría</h1>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              <section className="bg-stone-900 rounded-3xl shadow-lg border border-stone-800 overflow-hidden h-fit">
+                <div className="bg-stone-950 p-4 border-b border-stone-800">
+                  <h2 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">Pilares Oficiales</h2>
+                </div>
+                <div className="divide-y divide-stone-800">
+                  {ranking.map((item) => (
+                    <div key={item.nombre} className="p-4 px-5 flex justify-between items-center hover:bg-stone-800/50 transition">
+                      <p className="text-sm font-bold text-stone-200">{item.nombre}</p>
+                      <p className={`font-bold text-sm ${item.monto > 0 ? 'text-stone-100' : 'text-stone-600'}`}>{formatearMoneda(item.monto)}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="bg-stone-900 rounded-3xl shadow-lg border border-stone-800 overflow-hidden h-fit">
+                <div className="bg-stone-950 p-4 border-b border-stone-800">
+                  <h2 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">Detalle por Sub-Categoría</h2>
+                </div>
+                <div className="divide-y divide-stone-800 max-h-[500px] overflow-y-auto">
+                  {rankingSub.length === 0 ? (
+                    <p className="p-6 text-center text-xs text-stone-600 italic">No hay gastos para agrupar.</p>
+                  ) : (
+                    rankingSub.map((item) => (
+                      <div key={item.nombre} className="p-3 px-5 flex justify-between items-center hover:bg-stone-800/50 transition">
+                        <p className="text-xs font-bold text-stone-400">{item.nombre}</p>
+                        <p className="font-bold text-xs text-stone-300">{formatearMoneda(item.monto)}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+            </div>
+          </div>
+        )}
+
+        {/* --- VISTA: AGENDA --- */}
         {vistaActual === 'agenda' && (
           <div className="space-y-6 animate-fade-in">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
@@ -465,48 +526,24 @@ export default function Dashboard() {
           </div>
         )}
 
-        {vistaActual === 'finanzas' && (
-          <div className="space-y-6 animate-fade-in">
-            <h1 className="text-2xl font-light tracking-tight text-stone-100">Finanzas</h1>
-            <div className="md:hidden bg-stone-900 px-4 py-3 rounded-xl border border-stone-800 flex justify-between items-center">
-               <select value={mesFiltro} onChange={(e) => setMesFiltro(parseInt(e.target.value))} className="bg-transparent text-sm font-bold text-stone-200 outline-none"><option value={5}>Junio</option><option value={6}>Julio</option></select>
-            </div>
-            <section className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="col-span-2 md:col-span-1 bg-stone-900 p-4 rounded-xl border border-stone-800"><h3 className="text-[9px] font-bold text-stone-500 mb-1">Ingresos</h3><div className="text-xl font-light text-emerald-400">{formatearMoneda(resumenMes.ingresos)}</div></div>
-              <div className="bg-stone-900 p-4 rounded-xl border border-stone-800"><h3 className="text-[9px] font-bold text-stone-500 mb-1">Necesarios</h3><div className="text-xl font-light text-stone-100">{formatearMoneda(resumenMes.necesarios)}</div></div>
-              <div className="bg-stone-900 p-4 rounded-xl border border-stone-800"><h3 className="text-[9px] font-bold text-stone-500 mb-1">Innecesarios</h3><div className="text-xl font-light text-rose-500">{formatearMoneda(resumenMes.innecesarios)}</div></div>
-            </section>
-            <section className="bg-stone-900 rounded-2xl border border-stone-800 overflow-hidden shadow-lg">
-              <div className="p-4 border-b border-stone-800"><h3 className="text-sm font-medium text-stone-200">Historial</h3></div>
-              <div className="overflow-x-auto"><table className="w-full text-left text-xs whitespace-nowrap"><thead className="bg-stone-950 text-stone-500 uppercase tracking-wider font-bold text-[9px]"><tr><th className="p-3 md:p-4">Fecha</th><th className="p-3 md:p-4">Detalle</th><th className="p-3 md:p-4 text-right">Monto</th><th className="p-3 md:p-4 text-center">Acciones</th></tr></thead><tbody className="divide-y divide-stone-800">{transacciones.map((t) => (<tr key={t.id}><td className="p-3 md:p-4 text-stone-400">{formatearFechaTabla(t.fecha)}</td><td className="p-3 md:p-4"><p className="font-bold text-stone-300">{t.categoriaFinanzas}</p><p className="text-[9px] text-stone-500">{t.tipo}</p></td><td className={`p-3 md:p-4 text-right font-bold ${t.tipo==='Ingreso'?'text-emerald-400':'text-stone-200'}`}>{t.tipo==='Ingreso'?'+':'-'}{formatearMoneda(t.monto)}</td><td className="p-3 md:p-4 text-center space-x-3"><button onClick={() => abrirFormularioEdicion(t)} className="text-stone-500">✎</button><button onClick={() => manejarEliminar(t.id)} className="text-rose-500">🗑</button></td></tr>))}</tbody></table></div>
-            </section>
-          </div>
-        )}
-
-        {vistaActual === 'auditoria' && (
-          <div className="space-y-6 animate-fade-in">
-            <h1 className="text-2xl font-light text-stone-100">Auditoría</h1>
-            <section className="bg-stone-900 rounded-3xl shadow-lg border border-stone-800 overflow-hidden">
-              <div className="divide-y divide-stone-800">{ranking.map((item) => (<div key={item.nombre} className="p-4 px-5 flex justify-between items-center"><p className="text-sm font-bold text-stone-200">{item.nombre}</p><p className={`font-medium text-sm ${item.monto>0?'text-stone-100':'text-stone-600'}`}>{formatearMoneda(item.monto)}</p></div>))}</div>
-            </section>
-          </div>
-        )}
-
+        {/* --- VISTA: HÁBITOS --- */}
         {vistaActual === 'habitos' && (
           <div className="space-y-6 animate-fade-in">
-            <h1 className="text-2xl font-light text-stone-100">Control Hábitos</h1>
+            <h1 className="text-2xl font-light text-stone-100 border-b border-stone-800 pb-4">Control Hábitos</h1>
             <div className="grid grid-cols-3 gap-3 md:gap-6">
               {['Salud', 'Disciplina', 'Estudio'].map(cat => (
-                <div key={cat} className="bg-stone-900 p-4 md:p-6 rounded-xl border border-stone-800"><h3 className="text-[9px] font-bold text-stone-500 mb-3 uppercase tracking-wider">{cat}</h3><div className="text-2xl md:text-3xl font-light text-emerald-400 mb-1">{pcts.mes[cat]}%</div><div className="w-full bg-stone-950 rounded-full h-1"><div className="bg-emerald-500 h-1 rounded-full" style={{width:`${pcts.mes[cat]}%`}}></div></div></div>
+                <div key={cat} className="bg-stone-900 p-4 md:p-6 rounded-2xl border border-stone-800"><h3 className="text-[9px] font-bold text-stone-500 mb-3 uppercase tracking-wider">{cat}</h3><div className="text-2xl md:text-3xl font-light text-emerald-400 mb-1">{pcts.mes[cat]}%</div><div className="w-full bg-stone-950 rounded-full h-1"><div className="bg-emerald-500 h-1 rounded-full" style={{width:`${pcts.mes[cat]}%`}}></div></div></div>
               ))}
             </div>
-            <section className="bg-stone-900 rounded-2xl border border-stone-800 overflow-hidden shadow-lg">
-              <div className="overflow-x-auto"><table className="w-full text-left text-xs whitespace-nowrap"><thead className="bg-stone-950 text-stone-500 uppercase tracking-wider font-bold text-[9px]"><tr><th className="p-3">Fecha</th><th className="p-3 text-center">Fuerza</th><th className="p-3 text-center">Nutri</th><th className="p-3 text-center">Abst</th><th className="p-3 text-center">Audit</th><th className="p-3 text-center">TUP</th><th className="p-3">Acciones</th></tr></thead><tbody className="divide-y divide-stone-800">{historialHabitos.map((h) => (<tr key={h.id}><td className="p-3 text-stone-400 font-bold">{formatearFechaTabla(h.fecha)}</td><td className="p-3 text-center">{renderBadge(h.fuerza)}</td><td className="p-3 text-center">{renderBadge(h.nutricion)}</td><td className="p-3 text-center">{renderBadge(h.abstinencia)}</td><td className="p-3 text-center">{renderBadge(h.auditoria)}</td><td className="p-3 text-center">{renderBadge(h.estudio)}</td><td className="p-3 text-center space-x-3"><button onClick={() => abrirModalHabitoManual(h)} className="text-stone-500">✎</button><button onClick={() => borrarHabitoManual(h.id)} className="text-rose-500">🗑</button></td></tr>))}</tbody></table></div>
+            <section className="bg-stone-900 rounded-3xl border border-stone-800 overflow-hidden shadow-lg">
+              <div className="overflow-x-auto"><table className="w-full text-left text-xs whitespace-nowrap"><thead className="bg-stone-950 text-stone-500 uppercase tracking-wider font-bold text-[9px]"><tr><th className="p-4">Fecha</th><th className="p-4 text-center">Fuerza</th><th className="p-4 text-center">Nutri</th><th className="p-4 text-center">Abst</th><th className="p-4 text-center">Audit</th><th className="p-4 text-center">TUP</th><th className="p-4 text-center">Acciones</th></tr></thead><tbody className="divide-y divide-stone-800">{historialHabitos.map((h) => (<tr key={h.id}><td className="p-4 text-stone-400 font-bold">{formatearFechaTabla(h.fecha)}</td><td className="p-4 text-center">{renderBadge(h.fuerza)}</td><td className="p-4 text-center">{renderBadge(h.nutricion)}</td><td className="p-4 text-center">{renderBadge(h.abstinencia)}</td><td className="p-4 text-center">{renderBadge(h.auditoria)}</td><td className="p-4 text-center">{renderBadge(h.estudio)}</td><td className="p-4 text-center space-x-4"><button onClick={() => abrirModalHabitoManual(h)} className="text-stone-500 font-bold hover:text-stone-300">Editar</button><button onClick={() => borrarHabitoManual(h.id)} className="text-rose-500 font-bold hover:text-rose-400">Borrar</button></td></tr>))}</tbody></table></div>
             </section>
           </div>
         )}
 
         {/* MODALES COMPLETOS */}
+        
+        {/* MODAL FINANZAS */}
         {modalAbierto && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-stone-900 w-full max-w-md rounded-2xl shadow-2xl border border-stone-700 overflow-hidden p-5 md:p-6 space-y-5">
@@ -530,6 +567,7 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* MODAL HÁBITOS MANUAL */}
         {modalHabitoManual && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-stone-900 w-full max-w-sm rounded-2xl shadow-2xl border border-stone-700 overflow-hidden p-5 md:p-6 space-y-5">
@@ -550,6 +588,7 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* MODAL AGENDA */}
         {modalAgendaAbierto && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-stone-900 w-full max-w-md rounded-2xl shadow-2xl border border-stone-700 overflow-hidden p-5 md:p-6 space-y-5">
@@ -585,6 +624,32 @@ export default function Dashboard() {
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setModalAgendaAbierto(false)} className="flex-1 bg-stone-950 text-stone-400 border border-stone-800 py-3 rounded-xl font-bold hover:bg-stone-800 transition">Cancelar</button>
+                  <button type="submit" className="flex-1 bg-stone-100 text-stone-950 py-3 rounded-xl font-bold hover:bg-white transition">Guardar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* NUEVO MODAL ESTUDIO */}
+        {modalEstudioAbierto && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-stone-900 w-full max-w-md rounded-2xl shadow-2xl border border-stone-700 overflow-hidden p-5 md:p-6 space-y-5">
+              <div className="flex justify-between items-center border-b border-stone-800 pb-3">
+                <h3 className="font-semibold text-base text-stone-100">{formEstudio.id ? 'Editar Tema' : 'Programar Tema'}</h3>
+                <button onClick={() => setModalEstudioAbierto(false)} className="text-stone-500 text-lg">×</button>
+              </div>
+              <form onSubmit={guardarEstudio} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-[10px] text-stone-500 mb-1 font-bold uppercase tracking-wider">Fecha de Estudio</label>
+                  <input type="date" required value={formEstudio.fecha} onChange={e => setFormEstudio({...formEstudio, fecha: e.target.value})} className="w-full bg-stone-950 border border-stone-800 p-3 rounded-xl text-stone-200 [color-scheme:dark] outline-none focus:border-blue-500 transition" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-stone-500 mb-1 font-bold uppercase tracking-wider">Materia o Tema Específico</label>
+                  <input type="text" required value={formEstudio.materia} onChange={e => setFormEstudio({...formEstudio, materia: e.target.value})} placeholder="Ej: Lógica de Programación, Base de Datos" className="w-full bg-stone-950 border border-stone-800 p-3 rounded-xl text-stone-200 outline-none focus:border-blue-500 transition" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setModalEstudioAbierto(false)} className="flex-1 bg-stone-950 text-stone-400 border border-stone-800 py-3 rounded-xl font-bold hover:bg-stone-800 transition">Cancelar</button>
                   <button type="submit" className="flex-1 bg-stone-100 text-stone-950 py-3 rounded-xl font-bold hover:bg-white transition">Guardar</button>
                 </div>
               </form>
