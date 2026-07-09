@@ -62,10 +62,11 @@ export default function Dashboard() {
   const [modalAgendaAbierto, setModalAgendaAbierto] = useState(false);
   const [eventoEdit, setEventoEdit] = useState({ id: null, horaInicio: '08:00', horaFin: '09:00', titulo: '', tipo: 'Obligacion' });
 
-  // ESTADOS PARA ESTUDIO
+  // ESTADOS PARA ESTUDIO Y RUTINA VISUAL
   const [estudioData, setEstudioData] = useState([]);
   const [modalEstudioAbierto, setModalEstudioAbierto] = useState(false);
   const [formEstudio, setFormEstudio] = useState({ id: null, fecha: obtenerFechaLocal(), materia: '', completado: false });
+  const [modalRutinaAbierto, setModalRutinaAbierto] = useState(false); // <--- NUEVO ESTADO PARA LA IMAGEN
 
   const [modalAbierto, setModalAbierto] = useState(false);
   const [formId, setFormId] = useState(null); 
@@ -118,7 +119,6 @@ export default function Dashboard() {
   const habitoDelDia = historialHabitos.find(h => h.fecha === fechaDashboard) || { fuerza: null, nutricion: null, abstinencia: null, auditoria: null, estudio: null };
   const requeridosHoy = obtenerRequeridos(fechaDashboard);
   
-  // LOGICA PARA EL TABLERO GENERAL
   const gastosHoy = transacciones.filter(t => t.tipo === 'Gasto' && t.fecha.split('T')[0] === fechaDashboard).reduce((acc, curr) => acc + parseFloat(curr.monto), 0);
   const temaDeHoy = estudioData.find(e => e.fecha === fechaDashboard);
 
@@ -133,39 +133,16 @@ export default function Dashboard() {
     } catch (error) { console.error(error); } 
   };
 
-  // FUNCIONES ESTUDIO
-  const abrirModalEstudio = (item = null) => {
-    if (item) setFormEstudio({ id: item.id, fecha: item.fecha, materia: item.materia, completado: item.completado });
-    else setFormEstudio({ id: null, fecha: obtenerFechaLocal(), materia: '', completado: false });
-    setModalEstudioAbierto(true);
-  };
+  const abrirModalEstudio = (item = null) => { if (item) setFormEstudio({ id: item.id, fecha: item.fecha, materia: item.materia, completado: item.completado }); else setFormEstudio({ id: null, fecha: obtenerFechaLocal(), materia: '', completado: false }); setModalEstudioAbierto(true); };
+  const guardarEstudio = async (e) => { e.preventDefault(); try { if (formEstudio.id) await axios.put(`${API_URL}/api/estudio/${formEstudio.id}`, formEstudio); else await axios.post(`${API_URL}/api/estudio`, formEstudio); setModalEstudioAbierto(false); cargarDatosGlobales(); } catch (err) { console.error(err); } };
+  const borrarEstudio = async (id) => { if (window.confirm("¿Eliminar este tema?")) { try { await axios.delete(`${API_URL}/api/estudio/${id}`); cargarDatosGlobales(); } catch (err) { console.error(err); } } };
+  const toggleCompletadoEstudio = async (item) => { try { await axios.put(`${API_URL}/api/estudio/${item.id}`, { ...item, completado: !item.completado }); cargarDatosGlobales(); } catch (err) { console.error(err); } };
 
-  const guardarEstudio = async (e) => {
-    e.preventDefault();
-    try {
-      if (formEstudio.id) await axios.put(`${API_URL}/api/estudio/${formEstudio.id}`, formEstudio);
-      else await axios.post(`${API_URL}/api/estudio`, formEstudio);
-      setModalEstudioAbierto(false);
-      cargarDatosGlobales();
-    } catch (err) { console.error(err); }
-  };
-
-  const borrarEstudio = async (id) => {
-    if (window.confirm("¿Eliminar este tema?")) {
-      try { await axios.delete(`${API_URL}/api/estudio/${id}`); cargarDatosGlobales(); } catch (err) { console.error(err); }
-    }
-  };
-
-  const toggleCompletadoEstudio = async (item) => {
-    try { await axios.put(`${API_URL}/api/estudio/${item.id}`, { ...item, completado: !item.completado }); cargarDatosGlobales(); } catch (err) { console.error(err); }
-  };
-
-  // FUNCIONES DE HÁBITOS, AGENDA Y FINANZAS
   const mapDBtoForm = (val) => val === null ? 'descanso' : val === true ? 'cumplido' : 'nocumplido';
   const mapFormtoDB = (val) => val === 'descanso' ? null : val === 'cumplido' ? true : false;
   const abrirModalHabitoManual = (h = null) => { if (h) setFormHabitoManual({ id: h.id, fecha: h.fecha, Entrenamiento: mapDBtoForm(h.fuerza), Nutrición: mapDBtoForm(h.nutricion), Abstinencia: mapDBtoForm(h.abstinencia), Auditoría: mapDBtoForm(h.auditoria), Estudio: mapDBtoForm(h.estudio) }); else setFormHabitoManual({ id: null, fecha: obtenerFechaLocal(), Entrenamiento: 'descanso', Nutrición: 'descanso', Abstinencia: 'descanso', Auditoría: 'descanso', Estudio: 'descanso' }); setModalHabitoManual(true); };
   const handleFechaHabitoChange = (nuevaFecha) => { const record = historialHabitos.find(h => h.fecha === nuevaFecha) || {}; setFormHabitoManual({ id: record.id || null, fecha: nuevaFecha, Entrenamiento: mapDBtoForm(record.fuerza), Nutrición: mapDBtoForm(record.nutricion), Abstinencia: mapDBtoForm(record.abstinencia), Auditoría: mapDBtoForm(record.auditoria), Estudio: mapDBtoForm(record.estudio) }); };
-  const manejarEnvioHabitoManual = async (e) => { e.preventDefault(); try { await axios.post(`${API_URL}/api/habitos`, { fecha: formHabitoManual.fecha, fuerza: mapFormtoDB(formHabitoManual.Entrenamiento), nutricion: mapFormtoDB(formHabitoManual.Nutrición), abstinencia: mapFormtoDB(formHabitoManual.Abstinencia), auditoria: mapFormtoDB(formHabitoManual.Auditoría), estudio: mapFormtoDB(formHabitoManual.Estudio) }); setModalHabitoManual(false); cargarDatosGlobales(); } catch (error) { console.error(error); } };
+  const manejarEnvioHabitoManual = async (e) => { e.preventDefault(); try { await axios.post(`${API_URL}/api/habitos`, { fecha: formHabitoManual.fecha, fuerza: mapFormtoDB(formHabitoManual.Entrenamiento), nutricion: mapFormtoDB(formHabitoManual.Nutrición), abstinencia: mapFormtoDB(formHabitoManual.Abstinencia), auditoria: mapFormtoDB(formHabitoManual.Auditoría), estudio: mapFormtoDB(formHabitoManual.Estudio) }); setModalHabitoManual(false); cargarDatosGlobales(); } catch (error) {} };
   const borrarHabitoManual = async (id) => { if (window.confirm("¿Seguro que deseas eliminar este registro?")) { try { await axios.delete(`${API_URL}/api/habitos/${id}`); cargarDatosGlobales(); } catch (error) {} } };
 
   const agendaFiltradaVista = agendaCompleta.filter(e => e.diaCiclo === diaAgendaSeleccionado).sort((a,b) => a.horaInicio.localeCompare(b.horaInicio));
@@ -176,7 +153,6 @@ export default function Dashboard() {
   const abrirFormularioNuevo = (tipo = 'Gasto', subTipo = 'Necesario') => { setFormId(null); setFormTipo(tipo); setFormSubTipo(subTipo); setFormMonto(''); setFormCategoria('Alquiler'); setFormAplicacion(''); setFormFecha(obtenerFechaLocal()); setModalAbierto(true); };
   const abrirFormularioEdicion = (t) => { setFormId(t.id); setFormTipo(t.tipo); setFormSubTipo(t.categoria === 'Ingreso' ? 'Necesario' : t.categoria); setFormMonto(t.monto); setFormCategoria(t.categoriaFinanzas || 'Desconocido'); setFormAplicacion(t.aplicacion || ''); setFormFecha(t.fecha.split('T')[0]); setModalAbierto(true); };
   const manejarEliminar = async (id) => { if (window.confirm("¿Eliminar registro?")) { try { await axios.delete(`${API_URL}/api/finanzas/${id}`); cargarDatosGlobales(); } catch (error) {} } };
-  
   const manejarEnvioFormulario = async (e) => { e.preventDefault(); if (!formMonto || parseFloat(formMonto) <= 0) return; const fechaSegura = formFecha.includes('T') ? formFecha : formFecha + 'T12:00:00'; const payload = { monto: formMonto, tipo: formTipo, subTipo: formSubTipo, categoriaFinanzas: formTipo === 'Ingreso' ? 'Ingreso' : formCategoria, aplicacion: formAplicacion || 'Efectivo', fecha: fechaSegura }; try { if (formId) await axios.put(`${API_URL}/api/finanzas/${formId}`, payload); else await axios.post(`${API_URL}/api/finanzas`, payload); setModalAbierto(false); cargarDatosGlobales(); } catch (error) {} };
 
   const formatearMoneda = (val) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(val);
@@ -184,28 +160,24 @@ export default function Dashboard() {
   const procesarAuditoria = () => {
     const gastosAgrupados = {}; const gastosPorSub = {};
     Object.keys(MAPA_CATEGORIAS).forEach(cat => gastosAgrupados[cat] = 0);
-    
     transacciones.forEach(t => {
       if (t.tipo === 'Gasto') {
         const subCat = t.categoriaFinanzas || 'Desconocido';
         gastosPorSub[subCat] = (gastosPorSub[subCat] || 0) + parseFloat(t.monto);
-        
         let categoriaAsignada = "Desconocido";
         for (const [catMayor, subCats] of Object.entries(MAPA_CATEGORIAS)) { if (subCats.some(sc => sc.toLowerCase() === subCat.toLowerCase())) { categoriaAsignada = catMayor; break; } }
         gastosAgrupados[categoriaAsignada] += parseFloat(t.monto);
       }
     });
-    
     const ranking = Object.entries(gastosAgrupados).map(([nombre, monto]) => ({ nombre, monto })).sort((a, b) => b.monto - a.monto);
     const rankingSub = Object.entries(gastosPorSub).map(([nombre, monto]) => ({ nombre, monto })).sort((a, b) => b.monto - a.monto);
     return { ranking, rankingSub, maxGastoCategoria: ranking.length > 0 ? ranking[0].monto : 0 };
   };
 
-  const { ranking, rankingSub, maxGastoCategoria } = procesarAuditoria();
+  const { ranking, rankingSub } = procesarAuditoria();
   const contadorCumplidosHoy = [habitoDelDia.fuerza, habitoDelDia.nutricion, habitoDelDia.abstinencia, habitoDelDia.auditoria, habitoDelDia.estudio].filter(v => v === true).length;
   const progresoHabitos = requeridosHoy.length === 0 ? 100 : Math.round((contadorCumplidosHoy / requeridosHoy.length) * 100);
   
-  // CALCULOS FINANZAS
   const totalGastosMes = resumenMes.necesarios + resumenMes.innecesarios;
   const restanteMes = resumenMes.ingresos - totalGastosMes;
 
@@ -229,11 +201,10 @@ export default function Dashboard() {
     const getPct = (req, cump) => req === 0 ? 0 : Math.round((cump / req) * 100);
     return { mes: { Salud: getPct(stats.mes.Salud.req, stats.mes.Salud.cump), Disciplina: getPct(stats.mes.Disciplina.req, stats.mes.Disciplina.cump), Estudio: getPct(stats.mes.Estudio.req, stats.mes.Estudio.cump) }, semana: { Salud: getPct(stats.semana.Salud.req, stats.semana.Salud.cump), Disciplina: getPct(stats.semana.Disciplina.req, stats.semana.Disciplina.cump), Estudio: getPct(stats.semana.Estudio.req, stats.semana.Estudio.cump) } };
   };
-
   const pcts = procesarHabitosEstadisticas();
 
   return (
-    <div className="min-h-screen p-4 md:p-12 font-sans bg-stone-950 text-stone-200 selection:bg-emerald-900 pb-24 md:pb-12">
+    <div className="min-h-screen p-4 md:p-12 font-sans bg-stone-950 text-stone-200 selection:bg-emerald-900 pb-24 md:pb-12 relative">
       <div className="max-w-6xl mx-auto space-y-8">
         
         {/* NAVEGACIÓN DESKTOP */}
@@ -260,6 +231,7 @@ export default function Dashboard() {
               </select>
             </div>
             <div className="flex gap-2">
+              <button onClick={() => setModalRutinaAbierto(true)} className="bg-stone-900 text-stone-300 text-xs px-4 py-2.5 rounded-xl shadow-sm border border-stone-800 hover:bg-stone-800 transition font-bold whitespace-nowrap">🎯 Rutina</button>
               <button onClick={() => abrirModalHabitoManual(null)} className="bg-stone-800 text-stone-200 text-xs px-4 py-2.5 rounded-xl shadow-sm border border-stone-700 hover:bg-stone-700 transition font-bold whitespace-nowrap">✓ Registrar Día</button>
               <button onClick={() => abrirFormularioNuevo('Gasto', 'Necesario')} className="bg-stone-100 text-stone-950 text-xs px-4 py-2.5 rounded-xl shadow-sm hover:bg-white transition font-bold whitespace-nowrap">+ Transacción</button>
             </div>
@@ -284,6 +256,13 @@ export default function Dashboard() {
               <span className="text-[9px] font-bold uppercase tracking-wider">{tab.label}</span>
             </button>
           ))}
+        </div>
+
+        {/* BOTONES FLOTANTES MÓVIL */}
+        <div className="md:hidden fixed bottom-20 right-4 flex flex-col gap-3 z-40">
+          <button onClick={() => setModalRutinaAbierto(true)} className="w-12 h-12 bg-stone-900 text-stone-300 rounded-full shadow-lg border border-stone-800 flex items-center justify-center text-xl font-bold">🎯</button>
+          <button onClick={() => abrirModalHabitoManual(null)} className="w-12 h-12 bg-stone-800 text-white rounded-full shadow-lg border border-stone-700 flex items-center justify-center text-xl font-bold">✓</button>
+          <button onClick={() => abrirFormularioNuevo('Gasto', 'Necesario')} className="w-12 h-12 bg-emerald-500 text-stone-950 rounded-full shadow-lg flex items-center justify-center text-2xl font-bold">+</button>
         </div>
 
         {/* --- VISTA: DASHBOARD --- */}
@@ -321,7 +300,6 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-10">
               <div className="lg:col-span-2 space-y-6 md:space-y-8">
                 
-                {/* AVISO TEMA DE ESTUDIO (Solo aparece si es Martes o Jueves) */}
                 {requeridosHoy.includes('Estudio') && (
                   <div className="bg-gradient-to-r from-blue-900/40 to-stone-900 p-5 md:p-6 rounded-3xl border border-blue-900/50 shadow-lg flex items-center justify-between">
                     <div>
@@ -434,7 +412,6 @@ export default function Dashboard() {
             <h1 className="text-2xl font-light tracking-tight text-stone-100 border-b border-stone-800 pb-4">Finanzas</h1>
             
             <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {/* Fila 1 */}
               <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800">
                 <h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Ingresos Mes</h3>
                 <div className="text-xl font-bold text-emerald-400">{formatearMoneda(resumenMes.ingresos)}</div>
@@ -444,7 +421,6 @@ export default function Dashboard() {
                 <div className="text-xl font-bold text-rose-400">{formatearMoneda(totalGastosMes)}</div>
               </div>
               
-              {/* Fila 2 */}
               <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800">
                 <h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Necesarios</h3>
                 <div className="text-xl font-bold text-stone-300">{formatearMoneda(resumenMes.necesarios)}</div>
@@ -454,7 +430,6 @@ export default function Dashboard() {
                 <div className="text-xl font-bold text-rose-500">{formatearMoneda(resumenMes.innecesarios)}</div>
               </div>
 
-              {/* Fila 3: Restante (Ocupa todo el ancho inferior) */}
               <div className="col-span-2 md:col-span-4 bg-stone-900 p-4 md:p-5 rounded-2xl border border-blue-900/50 bg-gradient-to-br from-stone-900 to-blue-900/20 flex flex-col md:flex-row md:items-center justify-between">
                 <h3 className="text-[10px] font-bold text-blue-400 mb-1 md:mb-0 uppercase tracking-widest">Dinero Restante</h3>
                 <div className={`text-2xl font-bold ${restanteMes < 0 ? 'text-rose-500' : 'text-blue-100'}`}>
@@ -486,7 +461,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* --- VISTA: AUDITORÍA (Con Subcategorías) --- */}
+        {/* --- VISTA: AUDITORÍA --- */}
         {vistaActual === 'auditoria' && (
           <div className="space-y-6 animate-fade-in">
             <h1 className="text-2xl font-light text-stone-100 border-b border-stone-800 pb-4">Auditoría</h1>
@@ -582,6 +557,16 @@ export default function Dashboard() {
 
         {/* MODALES COMPLETOS */}
         
+        {/* MODAL RUTINA VISUAL (LA IMAGEN) */}
+        {modalRutinaAbierto && (
+          <div className="fixed inset-0 bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setModalRutinaAbierto(false)}>
+            <div className="relative max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl border border-stone-800" onClick={e => e.stopPropagation()}>
+              <button onClick={() => setModalRutinaAbierto(false)} className="absolute top-3 right-3 bg-stone-900/80 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold z-10 hover:bg-rose-500 transition border border-stone-700">✕</button>
+              <img src="/rutina.png" alt="Mi Rutina Diaria" className="w-full h-auto block" />
+            </div>
+          </div>
+        )}
+
         {/* MODAL FINANZAS */}
         {modalAbierto && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -670,7 +655,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* NUEVO MODAL ESTUDIO */}
+        {/* MODAL ESTUDIO */}
         {modalEstudioAbierto && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-stone-900 w-full max-w-md rounded-2xl shadow-2xl border border-stone-700 overflow-hidden p-5 md:p-6 space-y-5">
