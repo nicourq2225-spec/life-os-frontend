@@ -428,21 +428,60 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* --- VISTA: FINANZAS (Actualizada con Restante) --- */}
+        {/* --- VISTA: FINANZAS (Corregida y Proporcional) --- */}
         {vistaActual === 'finanzas' && (
           <div className="space-y-6 animate-fade-in">
             <h1 className="text-2xl font-light tracking-tight text-stone-100 border-b border-stone-800 pb-4">Finanzas</h1>
             
             <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800"><h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Ingresos Mes</h3><div className="text-xl font-bold text-emerald-400">{formatearMoneda(resumenMes.ingresos)}</div></div>
-              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800"><h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Gastos Totales</h3><div className="text-xl font-bold text-rose-400">{formatearMoneda(totalGastosMes)}</div></div>
-              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800"><h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Necesarios</h3><div className="text-xl font-bold text-stone-300">{formatearMoneda(resumenMes.necesarios)}</div></div>
-              <div className="col-span-2 md:col-span-1 bg-stone-900 p-4 rounded-2xl border border-blue-900/50 bg-gradient-to-br from-stone-900 to-blue-900/20"><h3 className="text-[10px] font-bold text-blue-400 mb-1 uppercase tracking-widest">Restante</h3><div className={`text-xl font-bold ${restanteMes < 0 ? 'text-rose-500' : 'text-blue-100'}`}>{formatearMoneda(restanteMes)}</div></div>
+              {/* Fila 1 */}
+              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800">
+                <h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Ingresos Mes</h3>
+                <div className="text-xl font-bold text-emerald-400">{formatearMoneda(resumenMes.ingresos)}</div>
+              </div>
+              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800">
+                <h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Gastos Totales</h3>
+                <div className="text-xl font-bold text-rose-400">{formatearMoneda(totalGastosMes)}</div>
+              </div>
+              
+              {/* Fila 2 */}
+              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800">
+                <h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Necesarios</h3>
+                <div className="text-xl font-bold text-stone-300">{formatearMoneda(resumenMes.necesarios)}</div>
+              </div>
+              <div className="bg-stone-900 p-4 rounded-2xl border border-stone-800">
+                <h3 className="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">Innecesarios</h3>
+                <div className="text-xl font-bold text-rose-500">{formatearMoneda(resumenMes.innecesarios)}</div>
+              </div>
+
+              {/* Fila 3: Restante (Ocupa todo el ancho inferior) */}
+              <div className="col-span-2 md:col-span-4 bg-stone-900 p-4 md:p-5 rounded-2xl border border-blue-900/50 bg-gradient-to-br from-stone-900 to-blue-900/20 flex flex-col md:flex-row md:items-center justify-between">
+                <h3 className="text-[10px] font-bold text-blue-400 mb-1 md:mb-0 uppercase tracking-widest">Dinero Restante</h3>
+                <div className={`text-2xl font-bold ${restanteMes < 0 ? 'text-rose-500' : 'text-blue-100'}`}>
+                  {formatearMoneda(restanteMes)}
+                </div>
+              </div>
             </section>
 
             <section className="bg-stone-900 rounded-3xl border border-stone-800 overflow-hidden shadow-lg">
               <div className="p-4 border-b border-stone-800"><h3 className="text-sm font-medium text-stone-200">Historial</h3></div>
-              <div className="overflow-x-auto"><table className="w-full text-left text-xs whitespace-nowrap"><thead className="bg-stone-950 text-stone-500 uppercase tracking-wider font-bold text-[9px]"><tr><th className="p-4">Fecha</th><th className="p-4">Detalle</th><th className="p-4 text-right">Monto</th><th className="p-4 text-center">Acciones</th></tr></thead><tbody className="divide-y divide-stone-800">{transacciones.map((t) => (<tr key={t.id}><td className="p-4 text-stone-400">{formatearFechaTabla(t.fecha)}</td><td className="p-4"><p className="font-bold text-stone-200">{t.categoriaFinanzas}</p><p className="text-[9px] text-stone-500 uppercase tracking-widest mt-0.5">{t.tipo}</p></td><td className={`p-4 text-right font-bold text-sm ${t.tipo==='Ingreso'?'text-emerald-400':'text-stone-300'}`}>{t.tipo==='Ingreso'?'+':'-'}{formatearMoneda(t.monto)}</td><td className="p-4 text-center space-x-4"><button onClick={() => abrirFormularioEdicion(t)} className="text-stone-500 font-bold hover:text-stone-300">Editar</button><button onClick={() => manejarEliminar(t.id)} className="text-rose-500 font-bold hover:text-rose-400">Borrar</button></td></tr>))}</tbody></table></div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-stone-950 text-stone-500 uppercase tracking-wider font-bold text-[9px]">
+                    <tr><th className="p-4">Fecha</th><th className="p-4">Detalle</th><th className="p-4 text-right">Monto</th><th className="p-4 text-center">Acciones</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-800">
+                    {transacciones.map((t) => (
+                      <tr key={t.id}>
+                        <td className="p-4 text-stone-400">{formatearFechaTabla(t.fecha)}</td>
+                        <td className="p-4"><p className="font-bold text-stone-200">{t.categoriaFinanzas}</p><p className="text-[9px] text-stone-500 uppercase tracking-widest mt-0.5">{t.tipo}</p></td>
+                        <td className={`p-4 text-right font-bold text-sm ${t.tipo==='Ingreso'?'text-emerald-400':'text-stone-300'}`}>{t.tipo==='Ingreso'?'+':'-'}{formatearMoneda(t.monto)}</td>
+                        <td className="p-4 text-center space-x-4"><button onClick={() => abrirFormularioEdicion(t)} className="text-stone-500 font-bold hover:text-stone-300">Editar</button><button onClick={() => manejarEliminar(t.id)} className="text-rose-500 font-bold hover:text-rose-400">Borrar</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           </div>
         )}
